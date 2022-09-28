@@ -1,0 +1,12 @@
+version: "3.9"
+services:
+  server:
+    build:
+      context: server/cs/ReponoStorage
+      dockerfile: ./Dockerfile
+    container_name: repono-storage-server
+    volumes:
+      - /home/server/storage:/data
+    ports:
+      - 8020:8015
+    restart: unless-stopped
