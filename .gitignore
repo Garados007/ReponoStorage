@@ -1,0 +1,5 @@
+# dotnet build stuff
+bin
+obj
+# test folder for vs code
+server/cs/ReponoStorage/test

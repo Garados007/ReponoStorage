@@ -1,0 +1,502 @@
+openapi: '3.0.2'
+info:
+  title: Storage API
+  version: '1.0'
+servers:
+  - url: http://localhost:8015/v1
+  - url: https://storage.2complex.de/v1
+paths:
+  /container/{container_id}:
+    get:
+      tags:
+        - Container
+      summary: Receives the information from a storage container
+      description: |
+        Returns the information object if found. If none this will return a 404 response. If this
+        container is encrypted and no password given this will return reduced information. If this
+        container is encrypted and a wrong password given this will return a 403 response.
+      parameters:
+        - name: container_id
+          in: path
+          required: true
+          description: the id of the container
+          schema:
+            type: string
+        - name: password
+          in: query
+          required: false
+          description: The password if the container is encrypted
+          schema:
+            type: string
+      responses:
+        '200':
+          description: |
+            The information content. If the container is encrypted and no password is given this
+            will return reduced information.
+          content:
+            "application/json":
+              schema:
+                $ref: '#/components/schemas/container_info'
+        '404':
+          description: No container with this id found
+        '403':
+          description: |
+            Invalid password for this container. This will also return if the container is not
+            encrypted and a password was given.
+  /container/:
+    get:
+      tags:
+        - Container
+      summary: Creates new container
+      description: |
+        Create a new container which can store a specific amount of data. For this a token has to be
+        provided that has a storage limit.
+      parameters:
+        - name: token
+          in: query
+          required: true
+          description: The creation token that should be used.
+          schema:
+            type: string
+        - name: password
+          in: query
+          required: false
+          description: |
+            The optional password that will be used to encrypt all the contents of this container.
+            If the provided password is empty no password will be used. The password has a maximum
+            length of 1024 bytes.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A new container has been created.
+          content:
+            'application/json':
+              schema:
+                $ref: '#/components/schemas/container_info'
+        '403':
+          description: |
+            A container cannot be created. This can be the reason of one of the following:
+            
+            - The creation token is expired or does not exists
+            - The creation token has no specified storage limit
+            - The creation token is exhaused and cannot create more container
+  /file/{container_id}:
+    get:
+      tags:
+        - File
+      summary: Get the content of a file
+      parameters:
+        - name: container_id
+          in: path
+          required: true
+          description: the id of the container
+          schema:
+            type: string
+        - name: password
+          in: query
+          required: false
+          description: The password if the container is encrypted
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          description: the path of the file
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The file was found. It will return the content of the file.
+        '404':
+          description: The file or container not found.
+        '403':
+          description: |
+            The password is wrong or not provided (if required). The 403 error has a higher
+            priority than 404 (403 won't tell you if the file exists or not).
+    put:
+      tags:
+        - File
+      summary: Replaces or upload new content of a file.
+      description: |
+        Replace or upload the new content of a file.
+
+        Limitations:
+
+        - The given file path has a maximum length of 1024 bytes. 
+        - The new file size won't make the total size of the container larger than it's maximum
+          allowence.
+        - File sizes smaller than 1024 bytes will be counted as they will use 1024 bytes.
+        - Each container can have a maximum of 1024 files. After that adding new files to the
+          container is not allowed until some are deleted.
+      parameters:
+        - name: container_id
+          in: path
+          required: true
+          description: the id of the container
+          schema:
+            type: string
+        - name: password
+          in: query
+          required: false
+          description: The password if the container is encrypted
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          description: the path of the file
+          schema:
+            type: string
+      responses:
+        '201':
+          description: The content is uploaded and stored at the server.
+        '403':
+          description: |
+            The password is wrong or not provided (if required).
+        '404':
+          description: Container not found.
+        '507':
+          description: |
+            Replacing or adding this file will make the container larger than its allowed to be.
+            This code will also be sent if the provided path is larger than 1024 bytes.
+      requestBody:
+        required: true
+        description: The content of the file
+        content:
+          '*/*':
+            schema:
+              type: string
+              format: binary
+    delete:
+      tags:
+        - File
+      summary: Deletes a stored file
+      parameters:
+        - name: container_id
+          in: path
+          required: true
+          description: the id of the container
+          schema:
+            type: string
+        - name: password
+          in: query
+          required: false
+          description: The password if the container is encrypted
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: true
+          description: the path of the file
+          schema:
+            type: string
+      responses:
+        '204':
+          description: The file was deleted
+        '403':
+          description: |
+            The password is wrong or not provided (if required).
+        '404':
+          description: |
+            The file was not found.
+  /token/{token_id}/:
+    get:
+      tags:
+        - Token
+      summary: Get the information of a token
+      parameters:
+        - name: token_id
+          in: path
+          description: The creation token that should be checked
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The token information
+          content:
+            'application/json':
+              schema:
+                $ref: '#/components/schemas/token_info'
+        '404':
+          description: The token was not found
+  /token/{token_id}/new:
+    get:
+      tags:
+        - Token
+      summary: Create a new subsequent child token of the parent token.
+      parameters:
+        - name: token_id
+          in: path
+          description: The parent token
+          required: true
+          schema:
+            type: string
+        - name: token_limit
+          in: query
+          description: |
+            The maximum token limit for the new token. This has to be smaller than the token limit
+            of the parent token because it will be reduced from it.
+          required: true
+          schema:
+            type: integer
+        - name: storage_limit
+          in: query
+          description: |
+            The maximum storage limit for the new token. This has to be smaller or equal to the
+            storage limit of the parent token.
+          required: true
+          schema:
+            type: integer
+        - name: hint
+          in: query
+          description: |
+            A small hint to add to the new token.
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The child token with its information
+          content:
+            'application/json':
+              schema:
+                $ref: '#/components/schemas/token_info'
+        '404':
+          description: The parent token was not found.
+        '507':
+          description: |
+            The parent token cannot create a new child token. That can be the reason of:
+
+            - parent token has no remaining tokens to create (token limit is 0).
+            - parent token is expired
+            - requested storage limit is larger than the storage limit of the header token
+            - requested token limit is larger than the token limit of the header token
+  /report/:
+    get:
+      tags:
+        - Report
+      summary: Get reports
+      parameters:
+        - name: container_id
+          in: query
+          required: false
+          description: the id of the container
+          schema:
+            type: string
+        - name: path
+          in: query
+          required: false
+          description: the path of the file
+          schema:
+            type: string
+      description: |
+        Get stored reports. If `container_id` is not set this will return reports of all containers.
+        If `path` and `container_id` are set this will only return reports that has the file listed.
+      responses:
+        '200':
+          description: The responses
+          content:
+            'application/json':
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/report_info'
+    post:
+      tags:
+        - Report
+      summary: Submit new report
+      parameters:
+        - name: container_id
+          in: query
+          required: true
+          description: the id of the container
+          schema:
+            type: string
+        - name: password
+          in: query
+          required: false
+          description: The password if the container is encrypted
+          schema:
+            type: string
+      description: |
+        Creates a new report for a container. This report will be stored and will be checked by a
+        moderator. If a report is accepted the corresponding files or container will be deleted.
+        After a report is solved (successful or not) they will be removed from the list.
+
+        If is possible to block creation tokens because of reports.
+
+        If the container is password protected it is required to add the correct password. This
+        password will be stored in clear text on the server until the report is resolved.
+      requestBody:
+        content:
+          'application/json':
+            schema:
+              $ref: '#/components/schemas/report'
+      responses:
+        '200':
+          description: Report created
+          content:
+            'application/json':
+              schema: 
+                $ref: '#/components/schemas/report_info'
+        '403':
+          description: Invalid password for the container
+        '404':
+          description: Container not found
+
+
+
+components:
+  schemas:
+    token_info:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The token of the string
+        parent:
+          type: string
+          nullable: true
+          description: The parent token id
+          example: null
+        child_tokens:
+          type: array
+          items:
+            type: string
+          description: The direct child tokens
+        child_container:
+          type: array
+          items:
+            type: string
+          description: The containers that are created with this token
+        storage_limit:
+          type: integer
+          nullable: true
+          description: |
+            The maximum storage limit for subsequent containers and tokens. If this field is null
+            than this token has an unlimited storage capacity and cannot be used to create
+            containers directly.
+          example: 1048576
+        token_limit:
+          type: integer
+          nullable: true
+          description: |
+            The remaining number of tokens that can be created with this one. Only the root token
+            can have an unlimited number of null.
+        expired:
+          type: boolean
+          description: |
+            States if this token is expired and can be used to create more tokens and containers.
+          example: false
+        created:
+          type: string
+          format: date-time
+          description: The creation date of this container
+        used:
+          type: string
+          format: date-time
+          description: The last use date of this container
+        hint:
+          type: string
+          nullable: true
+          description: The hint that was provided durring creation
+      required:
+        - id
+        - parent
+        - child_tokens
+        - child_container
+        - storage_limit
+        - token_limit
+        - expired
+        - created
+        - used
+        - hint
+    container_info:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The container id
+        created:
+          type: string
+          format: date-time
+          description: The creation date of this container
+        modified:
+          type: string
+          format: date-time
+          description: The last modification date of this container
+        encrypted:
+          type: boolean
+          description: States if this container was encrypted.
+        storage_limit:
+          type: integer
+          example: 1048576
+          description: |
+            The maximum size all files in this container can be together. The value is given in
+            Bytes.
+        files:
+          type: array
+          items:
+            $ref: '#/components/schemas/file_info'
+          description: The files that are stored in this container
+      required:
+        - id
+        - encrypted
+    file_info:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The id of the file. This is only internaly used.
+        path:
+          type: string
+          example: 'foo/bar.json'
+          description: The path of this file inside the container
+        created:
+          type: string
+          format: date-time
+          description: The creation date of this container
+        modified:
+          type: string
+          format: date-time
+          description: The last modification date of this container
+        size:
+          type: integer
+          description: The size of this file.
+        mime:
+          type: string
+          example: 'application/json'
+          description: |
+            The MIME type of this file. This will be autodetected depending on the extension.
+    report_info:
+      type: object
+      properties:
+        id:
+          type: string
+          description: The id of the report
+        container_id:
+          type: string
+          description: The id of the container
+        created:
+          type: string
+          format: date-time
+          description: The creation date of this report
+        report:
+          $ref: '#/components/schemas/report'
+    report:
+      type: object
+      properties:
+        reason:
+          type: string
+          description: The fulltext description with the reason of this report
+        files:
+          type: array
+          items:
+            type: string
+          description: |
+            The optional list of files that are reported
+      required:
+        - reason
+        
