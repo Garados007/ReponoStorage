@@ -470,6 +470,13 @@ components:
           example: 'application/json'
           description: |
             The MIME type of this file. This will be autodetected depending on the extension.
+      required:
+        - id
+        - path
+        - created
+        - modified
+        - size
+        - mime
     report_info:
       type: object
       properties:
@@ -485,6 +492,11 @@ components:
           description: The creation date of this report
         report:
           $ref: '#/components/schemas/report'
+      required:
+        - id
+        - container_id
+        - created
+        - report
     report:
       type: object
       properties:
